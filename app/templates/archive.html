@@ -1,6 +1,104 @@
 <section class="panel archive">
   <h3>{{ '$ 运行快照' if section == 'archive' else '$ 签发核验' }}</h3>
   {% if issued %}<p role="status">{{ '已归档' if fresh else '复用首次运行' }} {{ issued.inspection_id[:12] }}</p>{% endif %}
-  {% if evidence %}<p class="result" data-state="{{ 'PASS' if evidence.approved else 'OVER_LIMIT' }}">{{ '可签发' if evidence.approved else '待处置' }} · {{ evidence.blockers|join(' / ') }}</p><p class="hash">{{ evidence.integrity_sha256 }}</p><a class="download" href="/api/export/{{ evidence.inspection_id }}">下载核验证据</a>{% endif %}
-  <div class="sheet"><table><thead><tr><th>核验编号</th><th>时间 UTC</th><th>版本</th><th>耗时 (ms)</th></tr></thead><tbody>{% for entry in entries %}<tr><td><a href="/inspect/certificate?inspection={{ entry.inspection_id }}">{{ entry.inspection_id[:15] }}</a></td><td>{{ entry.generated_at }}</td><td>{{ entry.rule }}</td><td>{{ entry.duration_ms }}</td></tr>{% else %}<tr><td colspan="4"><a href="/inspect/archive">先留档一次链路核验。</a></td></tr>{% endfor %}</tbody></table></div>
+  {% if evidence %}
+    <p class="result" data-state="{{ 'PASS' if evidence.approved else 'OVER_LIMIT' }}">{{ '可签发' if evidence.approved else '待处置' }} · {{ evidence.blockers|join(' / ') }}</p>
+    <p class="hash">{{ evidence.integrity_sha256 }}</p>
+    {% if evidence.conclusion_only %}<p>该批次已清理，仅保留原签发结论与完整性摘要。</p>{% endif %}
+    <a class="download" href="/api/export/{{ evidence.inspection_id }}{% if batch and batch.batch_id != evidence.inspection_id %}?batch_id={{ batch.batch_id }}{% endif %}">{{ '下载签发结论' if evidence.conclusion_only else '下载核验证据' }}</a>
+  {% endif %}
+
+  {% if section == 'certificate' and retention_notice %}
+    <p class="result" role="status" data-retention-notice="{{ retention_notice.kind }}">{{ retention_notice.text }}</p>
+  {% endif %}
+
+  {% if section == 'certificate' and batch %}
+  <article class="panel retention" data-batch-id="{{ batch.batch_id }}" data-retention-state="{{ batch.state }}"
+           data-originals-available="{{ 'true' if batch.originals_available else 'false' }}"
+           data-disputed="{{ 'true' if batch.disputed else 'false' }}">
+    <h4>到期清理 / 争议留档</h4>
+    <p class="retention-policy">处理规则：到期批次只留原签发结论可查；争议批次仍能下载完整原件。仍有未到期批次或争议批次引用时保留原件；最后一个引用到期且无争议时永久清除。清理可中断恢复，旧批次重跑不能恢复已删原件。</p>
+    <p class="retention-state">
+      {% if batch.disputed %}
+        <strong>争议批次：</strong>争议已受理，完整原件和复核材料继续封存，可随时下载复算。
+      {% elif batch.originals_available %}
+        <strong>{{ '已到期，等待清理' if batch.expired else '未到期批次' }}：</strong>原件引用仍有效，签发结论与完整原件均可查。
+      {% else %}
+        <strong>到期批次：</strong>本批原件引用已清理，只保留原签发结论、阻断项和完整性摘要供查询。
+      {% endif %}
+    </p>
+    <p class="hash">批次 {{ batch.batch_id[:16] }} · 到期 {{ batch.due_at[:10] }} · 状态 {{ batch.state }}</p>
+
+    {% if batch.originals_available %}
+      <p class="downloads">
+        <a class="download" href="/api/batches/{{ batch.batch_id }}/originals">下载完整原件 (JSON)</a>
+        <a class="download" href="/api/batches/{{ batch.batch_id }}/originals?format=zip">下载 CSV 原件包 (ZIP)</a>
+        {% for item in batch.materials %}
+          <a href="/api/batches/{{ batch.batch_id }}/originals/{{ item.source }}">{{ item.filename }}</a>
+        {% endfor %}
+      </p>
+    {% elif batch.disputed and batch.active_dispute %}
+      <a class="download" href="/api/disputes/{{ batch.active_dispute.dispute_id }}/originals">下载争议复核原件</a>
+    {% else %}
+      <p><button type="button" disabled aria-disabled="true">完整原件已不可下载 / 复算</button></p>
+    {% endif %}
+
+    {% if batch.disputed and batch.active_dispute %}
+      <p role="status" data-dispute-id="{{ batch.active_dispute.dispute_id }}">
+        争议留档号 {{ batch.active_dispute.dispute_id }} · {{ batch.active_dispute.status }} · 复核材料{{ '齐全' if batch.materials_complete else '不齐全' }}
+      </p>
+    {% else %}
+      <form class="retention-form" method="post" action="/inspect/certificate?inspection={{ batch.inspection_id }}">
+        <input type="hidden" name="action" value="dispute">
+        <input type="hidden" name="batch_id" value="{{ batch.batch_id }}">
+        <label>争议说明<input name="reason" placeholder="受理争议后封存全部复核原件" required></label>
+        <button type="submit">受理争议并保留完整原件</button>
+      </form>
+    {% endif %}
+
+    <div class="retention-actions">
+      <form class="retention-form" method="post" action="/inspect/certificate?inspection={{ batch.inspection_id }}">
+        <input type="hidden" name="action" value="due">
+        <input type="hidden" name="batch_id" value="{{ batch.batch_id }}">
+        <label>到期日<input type="date" name="due_at" value="{{ batch.due_at[:10] }}"></label>
+        <button type="submit">更新到期日</button>
+      </form>
+      <form class="retention-form" method="post" action="/inspect/certificate?inspection={{ batch.inspection_id }}">
+        <input type="hidden" name="action" value="cleanup">
+        <input type="hidden" name="batch_id" value="{{ batch.batch_id }}">
+        <label>清理基准时间<input type="date" name="as_of" placeholder="YYYY-MM-DD"></label>
+        <button type="submit">执行到期清理 / 中断恢复</button>
+      </form>
+      {% if batch.originals_available %}
+      <form class="retention-form" method="post" action="/inspect/certificate?inspection={{ batch.inspection_id }}">
+        <input type="hidden" name="action" value="rerun">
+        <input type="hidden" name="batch_id" value="{{ batch.batch_id }}">
+        <button type="submit">用在保原件重跑旧批</button>
+      </form>
+      {% endif %}
+    </div>
+  </article>
+
+  {% if batch_rows %}
+  <div class="sheet batch-sheet">
+    <table>
+      <thead><tr><th>业务批次</th><th>核验编号</th><th>到期日</th><th>保留状态</th><th>原件</th><th>争议</th></tr></thead>
+      <tbody>
+        {% for row in batch_rows %}
+        <tr data-batch-id="{{ row.batch_id }}" data-retention-state="{{ row.state }}">
+          <td><a href="/inspect/certificate?inspection={{ row.inspection_id }}&batch_id={{ row.batch_id }}">{{ row.batch_id[:18] }}</a></td>
+          <td>{{ row.inspection_id[:12] }}</td>
+          <td>{{ row.due_at[:10] }}</td>
+          <td>{{ '争议留档' if row.disputed else ('已清理，仅结论' if row.cleaned else ('已到期待清理' if row.expired else '未到期')) }}</td>
+          <td>{{ '完整可下载' if row.originals_available else '不可下载' }}</td>
+          <td>{% if row.active_dispute %}<a href="/api/disputes/{{ row.active_dispute.dispute_id }}">{{ row.active_dispute.dispute_id[:14] }}</a>{% else %}无{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <div class="sheet"><table><thead><tr><th>核验编号</th><th>时间 UTC</th><th>版本</th><th>耗时 (ms)</th>{% if section == 'certificate' %}<th>保留状态</th>{% endif %}</tr></thead><tbody>{% for entry in entries %}{% set entry_batch = batch_by_inspection.get(entry.inspection_id) %}<tr><td><a href="/inspect/certificate?inspection={{ entry.inspection_id }}">{{ entry.inspection_id[:15] }}</a></td><td>{{ entry.generated_at }}</td><td>{{ entry.rule }}</td><td>{{ entry.duration_ms }}</td>{% if section == 'certificate' %}<td>{% if entry_batch %}{{ '争议留档' if entry_batch.disputed else ('仅结论可查' if not entry_batch.originals_available else ('到期待清理' if entry_batch.expired else '原件在保')) }}{% else %}—{% endif %}</td>{% endif %}</tr>{% else %}<tr><td colspan="{{ 5 if section == 'certificate' else 4 }}"><a href="/inspect/archive">先留档一次链路核验。</a></td></tr>{% endfor %}</tbody></table></div>
 </section>

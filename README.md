@@ -6,5 +6,12 @@
 
 各预览和留档 API 接收 `{"sample":"dirty"}`、`{"sample":"clean"}` 或 `{"traces":{"a":"CSV","b":"CSV","design":"CSV"},"settings":{...}}`。参数示例见 `sample_data/dirty/link.json`。从留档页提交，在签发页下载核验包。
 
+到期清理采用“原件内容哈希 + 批次引用 + 争议封存”：
+
+- `POST /api/batches` 可用 `inspection_id`、`batch_id`、`due_at`/`retention_until` 建立业务批次；`POST /api/inspections` 也可附带 `batches:[...]`。
+- `POST /api/disputes` 受理争议并固化齐全的复核材料清单；争议批次的 `/api/disputes/<id>/originals` 或 `/api/batches/<id>/originals` 可下载完整原件。
+- `POST /api/cleanup`（可传 `as_of`）执行可恢复清理：到期且无未结争议的批次先释放引用，最后一个活动引用消失后永久清空原件；到期批次的签发结论和完整性摘要仍可经 `/api/certificate/<inspection_id>?batch_id=<batch_id>` 查询。
+- 中断后调用 `POST /api/cleanup/resume`；同一旧快照重跑为幂等操作，不会恢复已清除的原件。
+
 - [模块与独立复算](docs/DEPTH.md)
 - [字段与规则](docs/DATA-DICTIONARY.md)

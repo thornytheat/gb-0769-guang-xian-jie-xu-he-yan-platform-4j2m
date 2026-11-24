@@ -4,12 +4,14 @@ from flask import Flask
 from .api import api
 from .console import console
 from .errors import InspectionError
+from .modules.retention.routes import retention_api
 
 
 def create_app(database=None):
     app = Flask(__name__)
     app.config.update(DATABASE=database or os.getenv('FIBER_DB','instance/inspection.sqlite'), MAX_CONTENT_LENGTH=3000000)
     app.register_blueprint(api)
+    app.register_blueprint(retention_api)
     app.register_blueprint(console)
 
     @app.errorhandler(InspectionError)

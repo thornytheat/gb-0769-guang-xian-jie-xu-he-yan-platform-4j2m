@@ -29,4 +29,13 @@ th { background:var(--surface-2); position:sticky; top:0; z-index:1; }
 #focus-event { display:block; font-size:11px; min-height:15px; color:var(--accent); padding:0 var(--pad); }
 .archive p,.download { margin:8px var(--pad); }
 .hash { overflow-wrap:anywhere; color:var(--muted); }
-@media(max-width:470px) { .kpis div { padding:6px 4px; } }
+.retention { margin:12px var(--pad); padding:10px 0; }
+.retention h4 { margin:0 var(--pad) 8px; }
+.retention-policy { color:var(--muted); font-size:12px; line-height:1.6; }
+.retention-actions { display:flex; flex-wrap:wrap; gap:10px; margin:8px var(--pad); }
+.retention-form { display:flex; flex-wrap:wrap; align-items:end; gap:8px; margin:8px var(--pad); }
+.retention-form label { display:grid; gap:4px; color:var(--muted); font-size:11px; }
+.retention-form input { min-width:180px; }
+.downloads { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+.batch-sheet { margin-top:12px; }
+@media(max-width:470px) { .kpis div { padding:6px 4px; } .retention-actions { display:block; } }
